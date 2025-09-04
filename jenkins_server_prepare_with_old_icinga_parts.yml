@@ -1,0 +1,348 @@
+# The playbook configures servers for Jenkins.
+# Currently, the playbook is only executable for Ubuntu Server.
+
+# For example, the playbook is called like this:
+# ansible-playbook -i ~/ansible/inventory/all-hosts.yml ~/ansible/playbooks/jenkins_server_prepare.yml --ask-vault-pass --vault-id=jenkins@prompt
+# the password is stored in the passwork with the name "Ansible playbook jenkins_server_prepare.yml 
+
+# when the playbook is ready, you still need to:
+# create a new view in the Jenkins GUI
+# adjust naming convention and create the jobs. 
+# In addition, still in the /etc/crontab the jenkins-jobs appropriate entries must be made.
+# A detailed instruction is in Wiki: https://wiki.jobvector.de/books/serververwaltung/page/server-fur-jenkins-cronjob-monitoring-vorbereiten
+
+- name: Preparing the server for Jenkins Cronjob monitoring
+  vars_prompt:
+    - name: hostname
+      private: false
+      prompt: Which host do you want to prepare for Jenkins? (Host alias from the inventory file)
+  
+  hosts: "{{ hostname }}"
+  become: true
+  become_user: root
+  vars_files:
+    - ~/ansible/files/jenkins_vars.yml
+    - ~/ansible/vaulted_vars.yml
+  vars:
+    ansible_ssh_pipelining: true
+  tasks:
+    - name: Check if Python3 is installed
+      ansible.builtin.raw: test -e /usr/bin/python3 || (apt-get update && apt -y install python3)
+      register: my_output
+      changed_when: my_output.rc != 0
+
+    - name: Install Java 11 if not installed
+      ansible.builtin.apt:
+        name: openjdk-11-jre
+        state: present
+        update_cache: true
+
+    - name: Set Java alternatives to auto mode
+      ansible.builtin.command:
+        cmd: update-alternatives --auto java
+#      become: true
+
+    - name: Install git if not installed
+      ansible.builtin.apt:
+        name: git
+        state: present
+
+    - name: Automatic check if google-server # funktioniert nur mit Ubuntu
+      ansible.builtin.stat:
+        path: /etc/google_instance_id
+      register: result_gcp_server
+
+    - name: 1. check/enter entry for git-server in /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ hosts_priv_ip }}"
+        state: present
+      when: result_gcp_server.stat.exists
+
+    - name: 1. check/enter entry for jenkins-server in /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ hosts_priv_ip_jenkins }}"
+        state: present
+      when: result_gcp_server.stat.exists
+
+    - name: 2. check/enter entry in /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ hosts_priv_ip }}"
+        state: absent
+      when: not result_gcp_server
+
+    - name: 3. check/enter entry in /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ hosts_publ_ip }}"
+        state: present
+      when: not result_gcp_server
+
+    - name: 4. check/enter entry in /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ hosts_publ_ip }}"
+        state: absent
+      when: result_gcp_server.stat.exists
+
+    - name: Copy git_pub_key
+      ansible.builtin.copy:
+        src: ~/ansible/files/id_ed25519_git.pub
+        dest: /root/.ssh/
+        mode: "0644"
+
+    - name: Copy git_priv_key
+      ansible.builtin.copy:
+        src: ~/ansible/files/id_ed25519_git
+        dest: /root/.ssh/
+        mode: "600"
+
+    - name: Get config_file_stat
+      ansible.builtin.stat:
+        path: /root/.ssh/config
+      register: config_file
+
+    - name: Check if the config file has a right content 1. line
+      ansible.builtin.lineinfile:
+        path: /root/.ssh/config
+        line: "{{ config1line }}"
+        state: present
+      when: config_file.stat.exists
+
+    - name: Check if the config file has a right content 2. line
+      ansible.builtin.lineinfile:
+        path: /root/.ssh/config
+        line: "{{ config2line }}"
+        state: present
+      when: config_file.stat.exists
+
+    - name: Check if the config file has a right content 3. line
+      ansible.builtin.lineinfile:
+        path: /root/.ssh/config
+        line: "{{ config3line }}"
+        state: present
+      when: config_file.stat.exists
+
+    - name: Check if the config file has a right content 4. line
+      ansible.builtin.lineinfile:
+        path: /root/.ssh/config
+        line: "{{ config4line }}"
+        state: present
+      when: config_file.stat.exists
+
+    - name: Create/updtate config file in /root/.ssh with specific content
+      ansible.builtin.blockinfile:
+        path: /root/.ssh/config
+        block: "{{ config_content }}"
+        create: true
+        mode: "0600"
+      when: config_file.stat.exists == false
+
+    - name: Known_hosts for git-server
+      ansible.builtin.lineinfile:
+        path: /root/.ssh/known_hosts
+        line: "{{ known_hosts_content }}"
+        create: true
+        mode: "0600"
+
+    - name: Clone jenkins repository (jenkins jobs -> /usr/local/bin/jenkins)
+      ansible.builtin.git:
+        repo: ssh://git@git.capsid.com:59326/jenkins/jenkins.git
+        dest: /usr/local/bin/jenkins
+        clone: true
+        accept_hostkey: true
+        update: true
+        force: false
+        recursive: true
+
+    - name: Clone jenkins repository (jenkins-cli.jar and also -> /usr/local/common)
+      ansible.builtin.git:
+        repo: ssh://git@git.capsid.com:59326/jenkins/common.git
+        dest: /usr/local/common
+        clone: true
+        accept_hostkey: true
+        update: true
+        force: false
+        recursive: true
+
+    - name: Check if /usr/local/jenkins exists
+      ansible.builtin.stat:
+        path: /usr/local/jenkins
+      register: jenkins_dir
+
+    - name: Remove /usr/local/jenkins.old if it exists
+      ansible.builtin.file:
+        path: /usr/local/jenkins.old
+        state: absent
+      when: jenkins_dir.stat.exists
+
+    - name: Rename /usr/local/jenkins to /usr/local/jenkins.old
+      ansible.builtin.command:
+        cmd: mv /usr/local/jenkins /usr/local/jenkins.old
+      when: jenkins_dir.stat.exists
+
+
+    - name: Rename /usr/local/common to /usr/local/jenkins
+      ansible.builtin.command:
+        cmd: mv /usr/local/common/ /usr/local/jenkins
+
+    - name: Create a directory "/etc/jenkins/" if not exists
+      ansible.builtin.file:
+        path: /etc/jenkins/
+        state: directory
+        mode: "0755"
+
+    - name: Check if icinga user exists
+      ansible.builtin.command: "id icinga"
+      register: icinga_user
+      ignore_errors: true
+      changed_when: icinga_user.rc != 0
+
+    - name: Create user icinga if not exists
+      user:
+        name: icinga
+        comment: Icinga
+        uid: 15002
+        shell: /bin/bash
+        home: /home/icinga
+        create_home: yes
+        state: present
+      when: icinga_user.rc != 0
+
+    - name: Copy jenkins_config.ini to /etc/jenkins/ and backup if it already exists
+      ansible.builtin.copy:
+        src: ~/ansible/files/jenkins_config.ini
+        dest: /etc/jenkins/jenkins_config.ini
+        owner: icinga
+        group: root
+        mode: "0640"
+        backup: true
+
+    - name: Check if external-job-monitor.conf exists in /etc/jenkins/
+      ansible.builtin.stat:
+        path: /etc/jenkins/external-job-monitor.conf
+      register: result_external_job_monitor
+
+    - name: Copy external-job-monitor.conf to /etc/jenkins
+      ansible.builtin.copy:
+        src: ~/ansible/files/external-job-monitor.conf
+        dest: /etc/jenkins/external-job-monitor.conf
+        mode: "0640"
+      when: result_external_job_monitor.stat.exists == false
+
+    - name: Input Server-name like in Jenkins GUI
+      ansible.builtin.pause:
+        prompt: "Please enter the Jenkins-name of the server (in CamelCase for Jenkins View f.e. CalcomStaging for calcom-staging)"
+      register: jenkins_name
+
+    - name: Add a line to external-conf-monitor.conf that sets the JENKINS_HOME variable
+      ansible.builtin.lineinfile:
+        path: /etc/jenkins/external-job-monitor.conf
+        state: present
+        regexp: '^JENKINS_HOME='
+        line: "JENKINS_HOME={{ jenkins_home_variable }}"
+
+    - name: Add a line to external-conf-monitor.conf that sets the SERVER variable
+      ansible.builtin.lineinfile:
+        path: /etc/jenkins/external-job-monitor.conf
+        state: present
+        regexp: '^SERVER='
+        line: "SERVER={{ jenkins_name.user_input }}"
+
+
+    - name: Check and set timezone
+      community.general.timezone:
+        name: Europe/Berlin
+      notify: Restart cron
+
+    - name: Create a directory "/home/icinga/.ssh/" if not exists
+      ansible.builtin.file:
+        path: /home/icinga/.ssh/
+        state: directory
+        owner: icinga
+        mode: '0700'
+
+    - name: Copy git_priv_key_for_icinga
+      ansible.builtin.copy:
+        src: ~/ansible/files/id_rsa
+        dest: /home/icinga/.ssh/id_rsa
+        owner: icinga
+        mode: '600'
+        force: true
+
+    - name: Check if /home/icinga/authorized_keys exists
+      ansible.builtin.stat:
+        path: /home/icinga/.ssh/authorized_keys
+      register: result_authorized_keys_icinga
+
+    - name: Check if /home/icinga/authorized_keys have a right content and add a right content if not existed
+      ansible.builtin.lineinfile:
+        path: /home/icinga/.ssh/authorized_keys
+        line: "{{ icinga_authorized_keys }}"
+        state: present
+      when: result_authorized_keys_icinga.stat.exists
+
+    - name: Copy authorized_keys for icinga
+      ansible.builtin.copy:
+        src: ~/ansible/files/authorized_keys
+        dest: /home/icinga/.ssh/authorized_keys
+        owner: icinga
+        group: icinga
+        mode: '0600'
+        force: false
+      when: result_authorized_keys_icinga.stat.exists == false
+
+    - name: Clone letsencrypt repository
+      ansible.builtin.git:
+        repo: ssh://git@git.capsid.com:59326/oezdemir/letsencrypt.git
+        dest: /home/icinga/letsencrypt_sync/
+        clone: true
+        accept_hostkey: true
+        update: true
+        force: false
+        recursive: true
+      become: true
+      become_user: icinga
+      ignore_errors: true
+
+    - name: Copy files from /home/icinga/letsencrypt_sync to /etc/letsencrypt_sync (both on remote host)
+      ansible.builtin.copy:
+        src: /home/icinga/letsencrypt_sync/
+        dest: /etc/letsencrypt_sync/
+        remote_src: true
+        owner: icinga
+        mode: '0755'
+        force: true
+
+    - name: Initialize successful_connection_made to false
+      set_fact:
+        successful_connection_made: false
+
+    - name: Test connect to jenkins-server on GCP
+      ansible.builtin.wait_for:
+        host: jenkins.jobvector.de
+        port: 443
+        state: started
+        delay: 5
+        timeout: 15
+      register: wait_for_result
+      ignore_errors: true
+
+    - name: Set a fact if the connection is successful
+      set_fact: 
+        successful_connection_made: true
+      when: wait_for_result.state == "started"
+      ignore_errors: true
+
+    - name: Display connection test result
+      ansible.builtin.debug:
+        msg: "{{ 'connection to jenkins GCP successful' if successful_connection_made else 'CONNECTION TO JENKINS GCP FAILED!!! Please check the Firewall on Jenkins GCP Server' }}"
+
+
+  handlers:
+    - name: Restart cron
+      ansible.builtin.service:
+        name: cron
+        state: restarted
