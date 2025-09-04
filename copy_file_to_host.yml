@@ -1,0 +1,55 @@
+---
+- name: Copy_File_to_Host
+  vars_files: 
+    - ~/ansible/vaulted_vars.yml
+
+  vars_prompt:
+    - name: hostname
+      private: false
+      prompt: Host to add file to
+    
+    - name: sourcefile
+      private: false
+      prompt: Sourcefile (Full absolute path)
+
+    - name: destination
+      private: false
+      prompt: Destination (Full absolute path)
+    
+    - name: owner
+      private: false
+      prompt: Owner
+
+    - name: group
+      private: false
+      prompt: Group
+
+    - name: permission
+      private: false
+      prompt: Permission
+
+  hosts:
+    - "{{ hostname }}"
+  
+  become: true
+  become_user: root
+
+  tasks:
+  
+    - name: Check, if file already exists
+      stat:
+        path: "{{ destination }}"
+      register: file
+    
+    - name: Warning
+      pause:
+        prompt: "File already existing on {{ inventory_hostname}}. Please confirm you want to overwrite File! Press return to continue. Press Ctrl+c to abort"
+      when: file.stat.exists
+
+    - name: Copy file to Host
+      copy:
+        src: "{{ sourcefile }}"
+        dest: "{{ destination }}"
+        owner: "{{ owner }}"
+        group: "{{ group }}"
+        mode: "{{ permission }}"
