@@ -1,0 +1,30 @@
+---
+#This playbook adds a line to given file in "path:" with content of "line:" . E.g. add a line to /etc/hosts or create a new cronjob 
+# https://docs.ansible.com/ansible/latest/collections/ansible/builtin/lineinfile_module.html#examples
+- name: Add Line to File
+  vars_files: ~/ansible/vaulted_vars.yml
+
+  vars_prompt:
+    - name: host
+      prompt: Host to remove add line to, defaults to 'all'
+      private: false
+      default: all
+
+    - name: path
+      private: false
+      prompt: /path/to/file
+    
+    - name: line
+      private: false
+      prompt: Line to add
+
+  hosts: "{{ host }}"
+  become: true
+  become_user: root
+
+  tasks:
+    - name: Add dedi internal
+      ansible.builtin.lineinfile:
+        path: "{{ path }}"
+        line: "{{ line }}"
+        create: yes
