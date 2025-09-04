@@ -1,0 +1,157 @@
+# The playbook configures servers for Icinga.
+
+# For example, the playbook is called like this:
+# ansible-playbook -i ~/ansible/inventory/all-hosts.yml ~/ansible/playbooks/icinga_server_prepare.yml --ask-vault-pass --vault-id=jenkins@prompt
+# the jenkins-password is stored in the passwork with the name "Ansible-Playbook jenkins_server_prepare.yml 
+
+# when the playbook is ready, you still need to call the icinga_uberserver_side.yml playbook so that the uberserver is also prepared.
+# In the Icinga Director GUI or with REST API the host must be created and the configuration deployed.
+# Detailed instructions: https://wiki.jobvector.de/books/serververwaltung/page/server-fur-icinga-monitoring-vorbereiten
+
+
+
+- name: Preparing the server for Icinga monitoring
+  vars_prompt:
+    - name: "hostname"
+      prompt: "Which host do you want to prepare for Icinga? (Host-alias from the inventory file)"
+      private: false
+
+  hosts: "{{ hostname }}"
+  become: true
+  become_user: root
+
+  vars_files:
+    - ~/ansible/files/jenkins_vars.yml
+    - ~/ansible/vaulted_vars.yml
+  vars:
+    ansible_ssh_pipelining: true
+
+  tasks:
+    - name: Check if Python3 is installed
+      ansible.builtin.raw: test -e /usr/bin/python3 || (apt-get update && apt -y install python3)
+      register: my_output
+      changed_when: my_output.rc != 0
+
+    - name: Install python3-pip and git if not installed
+      ansible.builtin.apt:
+        name:
+          - python3-pip
+          - git
+        state: present
+
+    - name: Install python-jenkins, python-crontab and croniter with pip3
+      ansible.builtin.pip:
+        name:
+          - python-jenkins
+          - python-crontab
+          - croniter
+        state: present
+        executable: pip3
+    
+    - name: Uninstall crontab pip3
+      ansible.builtin.pip:
+        name:
+          - crontab
+        state: absent
+        executable: pip3
+
+    - name: Check if the directory /usr/lib/nagios exists
+      ansible.builtin.stat:
+        path: /usr/lib/nagios/
+      register: directory_status
+
+    - name: Check if the directory /usr/lib/nagios is a git repository
+      ansible.builtin.command:
+        cmd: git rev-parse --is-inside-work-tree
+        chdir: /usr/lib/nagios/
+      register: git_repo_check
+      ignore_errors: true
+      when: directory_status.stat.exists and directory_status.stat.isdir
+      changed_when: 0==1
+
+    - name: Check if the directory /usr/lib/nagios is empty
+      ansible.builtin.find:
+        paths: /usr/lib/nagios/
+        file_type: any
+      register: directory_contents
+      when: directory_status.stat.exists and directory_status.stat.isdir
+      changed_when: 0==1
+
+    - name: Display a message if the directory is not a git repository
+      ansible.builtin.debug:
+        msg: "ACHTUNG!!! ACHTUNG!!! Das Verzeichnis /usr/lib/nagios ist nicht leer und scheint kein Git-Repository zu sein. Bitte überprüfen Sie den Inhalt und löschen Sie entweder das Verzeichnis und führen Sie das Playbook erneut aus oder klonen Sie das Git-Repository manuell.     ATTENTION!!! ATTENTION!!! The /usr/lib/nagios directory is not empty and does not appear to be a git repository. Please check the contents and either delete the directory and run the playbook again or manually clone the git repository."
+      when:
+        - git_repo_check.rc != 0
+        - directory_contents > 0
+      ignore_errors: true
+
+    - name: Clone nagios repository
+      ansible.builtin.git:
+        repo: ssh://git@git.capsid.com:59326/configs/nagios_plugins.git
+        dest: /usr/lib/nagios
+        clone: true
+        accept_hostkey: true
+        update: true
+        force: false
+        recursive: true
+
+    - name: Check if icinga user exists
+      ansible.builtin.command: "id icinga"
+      register: icinga_user
+      ignore_errors: true
+      changed_when: icinga_user.rc != 0
+
+    - name: Create user icinga if not exists
+      user:
+        name: icinga
+        comment: Icinga
+        uid: 15002
+        shell: /bin/bash
+        home: /home/icinga
+        create_home: yes
+        state: present
+      when: icinga_user.rc != 0
+
+    - name: Create a group icinga if not exists
+      group:
+        name: "icinga"
+        state: present
+    
+    - name: Create a directory "/home/icinga/.ssh/" if not exists
+      ansible.builtin.file:
+        path: /home/icinga/.ssh/
+        state: directory
+        owner: icinga
+        group: icinga
+        mode: '0700'
+
+    - name: Copy git_priv_key_for_icinga
+      ansible.builtin.copy:
+        src: ~/ansible/files/id_rsa
+        dest: /home/icinga/.ssh/id_rsa
+        owner: icinga
+        group: icinga
+        mode: '600'
+        force: true
+
+    - name: Check if /home/icinga/authorized_keys exists
+      ansible.builtin.stat:
+        path: /home/icinga/.ssh/authorized_keys
+      register: result_authorized_keys_icinga
+
+    - name: Check if /home/icinga/authorized_keys have a right content and add a right content if not existed
+      ansible.builtin.lineinfile:
+        path: /home/icinga/.ssh/authorized_keys
+        line: "{{ icinga_authorized_keys }}"
+        state: present
+      when: result_authorized_keys_icinga.stat.exists
+
+    - name: Copy authorized_keys for icinga
+      ansible.builtin.copy:
+        src: ~/ansible/files/authorized_keys
+        dest: /home/icinga/.ssh/authorized_keys
+        owner: icinga
+        group: icinga
+        mode: '0600'
+        force: false
+      when: result_authorized_keys_icinga.stat.exists == false
