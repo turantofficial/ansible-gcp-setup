@@ -1,0 +1,62 @@
+---
+- name: Create user on a linux server
+
+  vars_prompt:
+    - name: host
+      private: false
+      prompt: Host to add user to
+      default: all
+
+    - name: user
+      private: false
+      prompt: username
+
+    - name: password
+      private: true
+      prompt: password
+
+    - name: uid
+      private: false
+      prompt: uid
+
+    - name: sudoers
+      private: false
+      prompt: sudoers
+
+  hosts: "{{ host }}" # Either define a single host e.g. backup or a hostgroup e.g. dedi-hosts or all (-> takes all elemenst in chosen inventoryfile)
+
+  vars_files:
+    - ~/ansible/vaulted_vars.yml
+
+  become: yes
+  gather_facts: false
+
+  tasks:
+      - name: Create a login user
+        user:
+          name: "{{ user }}"
+          password: "{{ password | password_hash('sha512') }}"
+          update_password: on_create
+          uid: "{{ uid }}"
+          shell: /bin/bash 
+          groups:
+            - sshusers
+          append: yes
+          createhome: yes        # Defaults to yes
+          state: present
+        when: inventory_hostname != "mail" #Prepends mail account from deletion, has to be done manually on mailserver at UserExit
+
+      - name: adding existing user '{{ user }}' to group sudo
+        user:
+          name: '{{ user }}'
+          groups: sudo
+          append: yes
+        when: sudoers | bool
+
+      - name: Add {{ user }} to sudoers file
+        ansible.builtin.lineinfile:
+          path: /etc/sudoers
+          regexp: '^{{ user }}'
+          line: '{{ user }} ALL=(ALL) NOPASSWD: ALL'
+          validate: 'visudo -cf %s'
+        when: sudoers | bool
