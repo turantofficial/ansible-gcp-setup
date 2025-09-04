@@ -1,0 +1,24 @@
+- name: Download G Suite contacts and import to MacBook
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    gsuite_domain: your_gsuite_domain
+    gsuite_user: your_gsuite_user
+    contacts_filename: gsuite_contacts.csv
+
+  tasks:
+    - name: Download G Suite contacts
+      google.cloud.gsuite.gcontact_query:
+        query: "select * from contacts"
+        domain: "{{ gsuite_domain }}"
+        user: "{{ gsuite_user }}"
+        format: csv
+        fields:
+          - name
+          - email
+          - phone_number
+        outfile: "{{ contacts_filename }}"
+
+    - name: Import contacts to MacBook
+      shell: open -a "Contacts" "{{ contacts_filename }}"
