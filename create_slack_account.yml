@@ -1,0 +1,41 @@
+---
+- name: Create Slack User Account
+  hosts: localhost
+  become: false
+  vars_files:
+    - ~/ansible/vaulted_vars.yml
+  vars_prompt:
+    - name: firstname
+      prompt: Please input the first name
+      private: false
+    - name: lastname
+      prompt: Please input the last name
+      private: false
+    - name: did
+      prompt: Please input the phone extension (3-digit number, ex. 999)
+      private: false
+    - name: userpassword
+      prompt: Please input new userpassword
+      private: false
+  tasks:
+    - name: "Create Slack User"
+      uri:
+        method: POST
+        url: https://api.slack.com/scim/v1/Users
+        headers:
+          Content-Type: application/json
+          authorization: Bearer {{ slack }}
+        body_format: json
+        body: '{ "schemas":
+          ["urn:scim:schemas:core:1.0","urn:scim:schemas:extension:enterprise:1.0"],"userName":
+          "{{ lastname }}", "nickName": "{{ lastname }}", "name": {"familyName":
+          "{{ lastname }}", "givenName": "{{ firstname }}" }, "displayName": "{{
+          firstname }}{{ lastname }}", "emails": [{ "value": "{{ firstname }}.{{
+          lastname }}@company.com", "type": "work", "primary": true }],
+          "addresses": [{ "streetAddress": "Kingstreet 40", "locality":
+          "Kingstown", "region": "Kingland", "postalCode": "99999", "country":
+          "Kingstown", "primary": true  }],"phoneNumbers": [{ "value": "+49
+          111 99999{{ did }}", "type":"work"}], "password": "{{ userpassword }}"
+          }'
+        status_code: 201
+      register: create_slack_account
