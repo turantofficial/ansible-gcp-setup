@@ -1,0 +1,72 @@
+---
+- name: Create user and mailbox
+  hosts: "mail"
+  vars:
+    variable1: /^(?:{{ firstname }}\.)?({{ lastname }})@(company)\.(com|de)$/ $1
+
+  vars_prompt:
+    - name: firstname
+      private: false
+      prompt: firstname
+
+    - name: lastname
+      private: false
+      prompt: lastname
+
+    - name: user
+      private: false
+      prompt: username
+
+    - name: password
+      private: true
+      prompt: password
+
+    - name: mailgroups
+      private: false
+      prompt: To which group shall the user be added in /etc/group
+      default: all
+
+    - name: virtual_group
+      private: false
+      prompt: add user to virtual group in /etc/postfix/virtual
+      default: all
+
+  vars_files:
+      ~/ansible/vaulted_vars.yml
+
+  strategy: debug
+  become: true
+  become_user: root
+
+  tasks:
+    - debug: var=ansible_date_time
+    - name: Create User
+      user:
+        name: "{{ user }}"
+        shell: /bin/false
+        group: users
+        groups: "{{ mailgroups }}"
+        append: true #--> user is not removed from any other group
+        comment: "{{ firstname }} {{ lastname }}"
+        password: "{{ password | password_hash('sha512') }}"
+
+    - name: Create Mailbox and Alias
+      command: "perl /usr/local/src/createmailbox.pl {{ user }} group:{{ mailgroups }} no"
+
+        # The following three commands are not working anymore since we have splitted up the virtual alias file to virtual_aliases_other and  virtual_aliases_staff
+        #    - name: Create Postfix Virtual Backup
+        #command: "cp /etc/postfix/virtual /etc/postfix/oldVirtuals/virtual.{{ ansible_date_time.iso8601_basic_short }}"
+
+        #- name: Add alias in Team Aliasse 
+        #command: sed -i '/jv-?team/s/$/, {{lastname}},/' /etc/postfix/virtual
+
+        #- lineinfile:
+        #dest: /etc/postfix/virtual
+        #regexp: "{{virtual_group}}"
+        #line: "### {{virtual_group}} ###\n{{variable1 | join('')}}"
+
+    - name: Restart Postfix
+      systemd:
+        state: restarted
+        daemon-reload: yes
+        name: postfix.service
