@@ -1,0 +1,32 @@
+---
+- name: Replace Line in File
+  vars_files: ~/ansible/vaulted_vars.yml
+  hosts: "{{ host }}"
+  become: true
+
+  vars_prompt:
+    - name: host
+      prompt: Hostname from your playbook, defaults to 'all'
+      private: false
+      default: all
+
+    - name: path
+      private: false
+      prompt: /path/to/file
+    
+    - name: regex
+      private: false
+      prompt: Regex to be searched for
+
+    - name: newline
+      private: false
+      prompt: New line to be added instead of the line where regex has been found
+
+  tasks:
+    - name: replace line
+      ansible.builtin.lineinfile:
+        path: "{{ path }}"
+        regexp: "{{ regex }}"
+        line: "{{ newline }}"
+        backrefs: yes
+        create: true
