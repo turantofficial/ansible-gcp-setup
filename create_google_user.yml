@@ -1,0 +1,79 @@
+---
+- name: Create User for Google Workspace
+  hosts: localhost
+  become: false
+  vars:
+    - token: "{{google_api_token}}"
+  vars_files:
+    - ~/ansible/vaulted_vars.yml
+  vars_prompt:
+    - name: firstname
+      prompt: Please input the first name
+      private: false
+    - name: lastname
+      prompt: Please input the last name
+      private: false
+    - name: userpassword
+      prompt: userpassword
+      private: false
+    - name: did
+      prompt: Please input the phone extension (3-digit number, ex. 999)
+      private: false
+    - name: ou
+      prompt: Please input the Organization Unit
+      private: false
+    - name: groupKey
+      prompt: Please input the Group
+      private: false
+#    - name: memberKey
+#      prompt: Please write here the e-mail address of the user you want to add to the group (ex. turan@company.com )
+#      private: false
+
+  tasks:
+    - name: "Google Workspace: Create user"
+      uri:
+        method: POST
+        url: https://admin.googleapis.com/admin/directory/v1/users
+        headers:
+          Content-Type: application/json
+          authorization: "Bearer {{ token }}"
+        body_format: json
+        body: '{ "primaryEmail": "{{ firstname }}.{{ lastname }}@company.com",
+          "password": "{{ userpassword }}", "name": { "givenName": "{{ firstname
+          }}", "familyName": "{{ lastname }}" }, "isAdmin": false, "orgUnitPath": "{{ ou }}" }'
+
+    - name: "Edit user infos"
+      uri:
+        method: PUT
+        url: "https://admin.googleapis.com/admin/directory/v1/users/{{ firstname }}.{{ lastname }}@company.com"
+        headers:
+          Content-Type: application/json
+          authorization: "Bearer {{ token }}"        
+        body_format: json
+        body: '{ "agreedToTerms": true, "changePasswordAtNextLogin": true, "phones": [{
+          "value": "+49 211 54763{{ did }}", "type": "work"}],
+          "includeInGlobalAddressList": true, "recoveryEmail": "{{ firstname
+          }}.{{ lastname }}@company.com", "addresses": [{ "type": "work",
+          "formatted": "Kingstreet 1, 99999 Kingstown, KINGSLAND" }],
+          "languages": [{"languageCode": "de","preference":
+          "preferred"},{"languageCode": "en-DE","preference": "preferred"}]  }'
+        status_code:
+          - 200
+          - 201
+      register: create_google_user
+
+
+    - name: "Add Useracc into group"
+      uri:
+        method: PUT
+        url: "https://admin.googleapis.com/admin/directory/v1/groups/{{ groupKey }}/members"
+        headers:
+          Content-Type: application/json
+          authorization: "Bearer {{ token }}"        
+        body_format: json
+        body: '{ "email": {{ firstname }}.{{ lastname }}@company.com }'
+        status_code:
+          - 200
+          - 201
+      register: add_user_into_group
+
