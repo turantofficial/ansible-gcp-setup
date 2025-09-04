@@ -1,0 +1,31 @@
+- name: Create a SSH Key for User
+  hosts: localhost
+  vars_prompt:
+
+    - name: user 
+      prompt: Username 
+      private: false
+
+    - name: vorname
+      prompt: Vorname
+      private: false
+    
+    - name: nachname
+      prompt: Nachname
+      private: false
+
+
+  tasks:
+
+    - name: generate SSH key(s) "{{ user + '.key' }}"
+      delegate_to: localhost
+      connection: local
+      openssh_keypair:
+        path: "/Users/$USER/ansible/src/keys/{{ user }}.key"
+        #path: "~/ansible/src/keys/{{ user }}.key" #When using UNIX/LINUX
+        comment: "{{ vorname }} {{ nachname }}"
+        type: ed25519
+        size: 4096
+        state: present
+        force: yes
+
