@@ -1,0 +1,39 @@
+---
+#Please be logged in to the Admin Jira account in the browser when executing
+- name: Create User for JIRA
+  hosts: localhost
+  become: false
+  vars_files: 
+    - ~/ansible/vaulted_vars.yml
+  vars_prompt:
+    - name: firstname
+      prompt: Please input the first name
+      private: false
+    - name: lastname
+      prompt: Please input the last name
+      private: false
+    - name: userpassword
+      prompt: password for jira account
+      private: false
+
+  tasks:
+
+    - name: Create JIRA User Account
+      uri:
+        method: POST
+        url: https://jobvector.atlassian.net/rest/api/2/user
+        headers:
+          Content-Type: application/json
+          authorization: Basic {{ jira_basic_token }}
+        body_format: json
+        body: '{ "accountType": "atlassian", "emailAddress": "{{ firstname }}.{{ lastname
+          }}@jobvector.com", "displayName": "{{ firstname }} {{ lastname }}",
+          "active": true, "timeZone": "Europe/Berlin", "locale": "de_DE",
+          "password": "{{ userpassword }}" }'
+        status_code: 201
+      register: create_jira_user
+
+
+    - name: shell command to open admin console
+      shell: open https://admin.atlassian.com/o/SECRET?!/users\?status\=NONE
+      register: start_jira_console
