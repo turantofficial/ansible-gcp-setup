@@ -1,0 +1,24 @@
+---
+- hosts: all
+  #  strategy: debug
+  vars_files: 
+    - ~/ansible/vaulted_vars.yml
+  become: true
+  become_user: root
+  tasks:
+     - name: Update apt repo and cache on all Debian/Ubuntu boxes
+       apt: update_cache=yes upgrade=dist force_apt_get=yes
+
+     - name: Upgrade all packages on servers
+       register: reboot_required_file
+       stat: path=/var/run/reboot-required get_md5=no
+
+     - name: Reboot Server if kernel has been updated
+       reboot:
+         msg: "Reboot initiated by Ansible for kernel updates"
+         connect_timeout: 5
+         reboot_timeout: 300
+         pre_reboot_delay: 0
+         post_reboot_delay: 30
+         test_command: uptime
+       when: reboot_required_file.stat.exists
