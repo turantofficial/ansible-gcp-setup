@@ -1,0 +1,64 @@
+---
+#This playbook adds a line to given file in "path:" with content of "line:" . E.g. add a line to /etc/hosts or create a new cronjob  
+
+# https://docs.ansible.com/ansible/latest/collections/ansible/builtin/lineinfile_module.html#examples  
+
+
+- name: Add entry to /etc/hosts safely with backup and duplicate chec
+  vars_files: ~/ansible/vaulted_vars.yml
+  hosts: "{{ host }}"
+  become: true
+  become_user: root
+
+  vars_prompt:
+    - name: host
+      prompt: "Target host (default: all)"
+      private: false
+      default: all
+
+    - name: hosts_line
+      private: false
+      prompt: "Enter line to add (e.g. 10.10.10.10 testinstance )"
+
+  tasks:
+    - name: Create backup of /etc/hosts before any modification
+      ansible.builtin.copy:
+        src: /etc/hosts
+        dest: "/etc/hosts.bak_{{ ansible_date_time.iso8601 }}"
+        remote_src: true
+        mode: '0644'
+      register: backup_result
+
+    - name: Check if line already exists in /etc/hosts
+      ansible.builtin.shell: |
+        grep -Fx "{{ hosts_line }}" /etc/hosts || true
+      register: line_check
+      changed_when: false
+
+
+    - name: Inform if line already exists
+      ansible.builtin.debug:
+        msg: "The line '{{ hosts_line }}' already exists in /etc/hosts — no changes made."
+      when: line_check.stdout != ""
+
+    - name: Add line to /etc/hosts if not present
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ hosts_line }}"
+        insertafter: EOF
+        create: no
+        state: present
+        backup: no
+      when: line_check.stdout == ""
+      register: add_result
+
+    - name: Show summary
+      ansible.builtin.debug:
+        msg:
+          - "Backup created at {{ backup_result.dest }}"
+          - >-
+            {% if line_check.stdout == "" %}
+              Added line '{{ hosts_line }}' to /etc/hosts.
+            {% else %}
+              Skipped adding — entry already exists.
+            {% endif %}
