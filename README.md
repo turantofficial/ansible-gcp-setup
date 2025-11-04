@@ -57,7 +57,7 @@ e.g ping whole nlp_project:
 
 `ansible nlp_project -i ~/inventory.gcp.yml -m ping`
 
-
+Important: Use `gcloud auth list` to ensure that you are logged in to the terminal.
 
 
 
