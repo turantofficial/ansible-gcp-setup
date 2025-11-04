@@ -1,0 +1,11 @@
+#create your vaulted_vars:
+
+#`ansible-vault create vaulted_vars.yml`
+
+#`ansible-vault create --vault-id password1@prompt vaulted_vars.yml`
+
+#edit your vaulted_vars:
+
+#`ansible-vault edit vaulted_vars.yml`
+
+#For more infos see https://docs.ansible.com/ansible/2.8/user_guide/vault.html

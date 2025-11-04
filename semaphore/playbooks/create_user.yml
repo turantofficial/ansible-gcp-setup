@@ -1,0 +1,31 @@
+---
+#Please be logged in to the Admin Jira account in the browser when executing
+- name: Create a User
+  hosts: piwik #Define Host
+  become: true
+  become_user: semaphore
+  vars_files:
+    - /home/semaphore/ansible/vaulted_vars.yml
+    - /home/semaphore/ansible/src/user_vars.yml
+  tasks:
+    - name: "Check if SSH Key exists"
+      stat:
+        path: /home/semaphore/.ssh/semaphoretestuser1.pub 
+      register: file_details
+    - name: "Create user account(s)" #Perform playbook 'create_ssh_key.yml' beforehand
+      user:
+        name: "{{ user }}"
+        groups: "{{ unixgroups }}"
+        comment: "{{ vorname }} {{ nachname }}"
+        shell: "{{ shell }}"
+    - name: "Add authorized key(s)"
+      authorized_key:
+        user: "{{ user }}"
+        state: present
+        key: "{{ lookup('file', '/home/semaphore/.ssh/semaphoretestuser1.pub') }}"
+    - name: "Allow admin users to sudo without a password"
+      lineinfile:
+        dest: "/etc/sudoers" # path: in version 2.3
+        state: "present"
+        regexp: "^%sudo"
+        line: "%sudo ALL=(ALL) NOPASSWD: ALL"
